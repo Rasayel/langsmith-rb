@@ -10,24 +10,15 @@ end
 begin
   # Try to fetch a prompt from the current workspace
   # Just provide the name of the prompt, like "qualify-agent"
-  prompt_name = "qualify-agent"
+  prompt_name = "testing-prompt"
   puts "Fetching prompt '#{prompt_name}' from your workspace..."
   
-  prompt_json = Langsmith.hub.pull(prompt_name)
-  prompt = Langsmith::Models::ChatPromptTemplate.from_json(prompt_json)
+  prompt = Langsmith::Models::ChatPromptTemplate.pull(prompt_name)
 
   # Example usage of the prompt
   messages = prompt.format(
-    agent_name: "Alex",
-    business_website: "rasayel.io",
-    description: "Rasayel helps businesses communicate with their customers",
-    products_and_services: "WhatsApp Business API, Team Inbox, Automations",
-    primary_language: "English",
-    other_languages: "Arabic, Spanish",
-    qualification_goals: "Business size, messaging volume, current channels",
-    disqualification_topics: "Personal use, no business registration",
-    capabilities: "Can use tools: qualify, disqualify, handover",
-    question: "Hi, I'm interested in your service"
+    objectives: "Example 1, Example 2",
+    disqualification_criteria: "Example 3, Example 4"
   )
 
   puts "\nFormatted Messages:"

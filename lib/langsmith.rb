@@ -1,6 +1,4 @@
 require "zeitwerk"
-require "faraday"
-require "faraday/multipart"
 require "json"
 
 # Require error classes first

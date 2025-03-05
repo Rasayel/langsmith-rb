@@ -17,8 +17,6 @@ Gem::Specification.new do |spec|
   spec.files         = Dir.glob("{lib,spec}/**/*") + %w[README.md LICENSE.txt]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "faraday", "~> 2.7"
-  spec.add_dependency "faraday-multipart", "~> 1.0"
   spec.add_dependency "zeitwerk", "~> 2.6"
   spec.add_dependency "ruby-openai", "~> 6.1"
   spec.add_dependency "anthropic", "~> 0.3"

@@ -3,6 +3,11 @@ module Langsmith
     class ChatPromptTemplate < BaseModel
       attr_reader :messages, :input_variables, :tools
 
+      def self.pull(repo_name)
+        prompt_json = Langsmith.hub.pull(repo_name)
+        from_json(prompt_json)
+      end
+
       def initialize(messages:, input_variables:, tools: [])
         @messages = messages.map do |msg|
           case msg.dig("id", -1)
@@ -22,10 +27,15 @@ module Langsmith
 
         # Extract tools if present
         tools = json.dig("kwargs", "tools") || []
-        kwargs = json["kwargs"].transform_keys(&:to_sym)
-        kwargs[:tools] = tools
+        
+        # Only keep the supported kwargs (ignore template_format or other unexpected kwargs)
+        supported_kwargs = {
+          messages: json.dig("kwargs", "messages"),
+          input_variables: json.dig("kwargs", "input_variables"),
+          tools: tools
+        }.compact
 
-        new(**kwargs)
+        new(**supported_kwargs)
       end
 
       # Format the prompt with the given variables

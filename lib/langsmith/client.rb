@@ -1,5 +1,6 @@
 require "securerandom"
-require "faraday"
+require "net/http"
+require "uri"
 require "json"
 require "time"
 
@@ -14,13 +15,50 @@ module Langsmith
       raise Langsmith::ConfigurationError, "API key is required" unless @api_key
     end
 
-    def connection
-      @connection ||= Faraday.new(url: api_url) do |f|
-        f.request :json
-        f.response :json
-        f.adapter Faraday.default_adapter
-        f.headers["x-api-key"] = api_key
-        f.headers["Content-Type"] = "application/json"
+    # Make an HTTP request to the LangSmith API
+    def request(method, path, params = {}, body = nil)
+      uri = URI.join(api_url, path)
+      
+      # Add query parameters to URI if present
+      uri.query = URI.encode_www_form(params) if params && !params.empty?
+      
+      # Create the request object based on the HTTP method
+      request = case method.to_s.downcase
+      when 'get'
+        Net::HTTP::Get.new(uri)
+      when 'post'
+        req = Net::HTTP::Post.new(uri)
+        req.body = body.to_json if body
+        req
+      when 'patch'
+        req = Net::HTTP::Patch.new(uri)
+        req.body = body.to_json if body
+        req
+      when 'delete'
+        Net::HTTP::Delete.new(uri)
+      else
+        raise ArgumentError, "Unsupported HTTP method: #{method}"
+      end
+      
+      # Set headers
+      request["x-api-key"] = api_key
+      request["Content-Type"] = "application/json"
+      request["Accept"] = "application/json"
+      
+      # Send the request
+      begin
+        response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') do |http|
+          http.request(request)
+        end
+        
+        # Parse and handle the response
+        if response.is_a?(Net::HTTPSuccess)
+          JSON.parse(response.body) rescue response.body
+        else
+          raise Langsmith::APIError.new("API request failed with status #{response.code}: #{response.body}")
+        end
+      rescue => e
+        raise Langsmith::APIError.new("API request failed: #{e.message}")
       end
     end
 
@@ -65,14 +103,12 @@ module Langsmith
       # Only add extra if it's explicitly provided
       body[:extra] = extra unless extra.nil?
 
-      response = connection.post("api/v1/runs") do |req|
-        req.body = body
+      begin
+        request(:post, "api/v1/runs", {}, body)
+      rescue StandardError => e
+        request_info = "POST #{api_url}/api/v1/runs\nBody: #{body.inspect}"
+        raise Langsmith::APIError, "Failed to create run: #{e.message}\nRequest: #{request_info}"
       end
-
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "POST #{api_url}/api/v1/runs\nBody: #{response&.env&.request_body.inspect}"
-      raise Langsmith::APIError, "Failed to create run: #{e.message}\nRequest: #{request_info}"
     end
 
     def update_run(
@@ -114,37 +150,37 @@ module Langsmith
         session_id: session_id
       }.compact
 
-      response = connection.patch("api/v1/runs/#{run_id}") do |req|
-        req.body = body
+      begin
+        request(:patch, "api/v1/runs/#{run_id}", {}, body)
+      rescue StandardError => e
+        request_info = "PATCH #{api_url}/api/v1/runs/#{run_id}\nBody: #{body.inspect}"
+        raise Langsmith::APIError, "Failed to update run: #{e.message}\nRequest: #{request_info}"
       end
-
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "PATCH #{api_url}/api/v1/runs/#{run_id}\nBody: #{response&.env&.request_body.inspect}"
-      raise Langsmith::APIError, "Failed to update run: #{e.message}\nRequest: #{request_info}"
     end
 
     def get_run(run_id:)
-      response = connection.get("api/v1/runs/#{run_id}")
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "GET #{api_url}/api/v1/runs/#{run_id}"
-      raise Langsmith::APIError, "Failed to get run: #{e.message}\nRequest: #{request_info}"
+      begin
+        request(:get, "api/v1/runs/#{run_id}")
+      rescue StandardError => e
+        request_info = "GET #{api_url}/api/v1/runs/#{run_id}"
+        raise Langsmith::APIError, "Failed to get run: #{e.message}\nRequest: #{request_info}"
+      end
     end
 
     # Pull a prompt from LangChain Hub
     def pull_prompt(repo_name)
       # First get the repo details using the current workspace (-)
-      repo_response = connection.get("api/v1/repos/-/#{repo_name}")
-      repo_data = handle_response(repo_response)["repo"]
+      repo_data = request(:get, "api/v1/repos/-/#{repo_name}")["repo"]
 
       # Get the commit details using the last commit hash
       commit_hash = repo_data["last_commit_hash"]
-      commit_response = connection.get("api/v1/commits/-/#{repo_name}/#{commit_hash}")
-      commit_data = handle_response(commit_response)
+      commit_data = request(:get, "api/v1/commits/-/#{repo_name}/#{commit_hash}")
 
       # Return the manifest from the commit data
       commit_data["manifest"]
+    rescue StandardError => e
+      request_info = "GET #{api_url}/api/v1/repos/-/#{repo_name} or GET #{api_url}/api/v1/commits/-/#{repo_name}/..."
+      raise Langsmith::APIError, "Failed to pull prompt: #{e.message}\nRequest: #{request_info}"
     end
 
     def list_runs(
@@ -162,95 +198,92 @@ module Langsmith
         limit: limit
       }.compact
 
-      response = connection.get("api/v1/runs", params)
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "GET #{api_url}/api/v1/runs\nParams: #{params.inspect}"
-      raise Langsmith::APIError, "Failed to list runs: #{e.message}\nRequest: #{request_info}"
+      begin
+        request(:get, "api/v1/runs", params)
+      rescue StandardError => e
+        request_info = "GET #{api_url}/api/v1/runs\nParams: #{params.inspect}"
+        raise Langsmith::APIError, "Failed to list runs: #{e.message}\nRequest: #{request_info}"
+      end
     end
 
     def list_runs(parent_run_id: nil, run_type: nil, filter: nil, project_name: nil, session: nil)
-      response = connection.post("/api/v1/runs/query") do |req|
-        req.body = {
-          parent_run: parent_run_id,
-          run_type: run_type,
-          filter: filter,
-          project_name: project_name || Langsmith.configuration.project_name,
-          session: session.is_a?(Array) ? session : [session].compact
-        }.compact
+      body = {
+        parent_run: parent_run_id,
+        run_type: run_type,
+        filter: filter,
+        project_name: project_name || Langsmith.configuration.project_name,
+        session: session.is_a?(Array) ? session : [session].compact
+      }.compact
+
+      begin
+        request(:post, "api/v1/runs/query", {}, body)
+      rescue StandardError => e
+        request_info = "POST #{api_url}/api/v1/runs/query\nBody: #{body.inspect}"
+        raise Langsmith::APIError, "Failed to list runs: #{e.message}\nRequest: #{request_info}"
       end
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "POST #{api_url}/api/v1/runs/query\nBody: #{response&.env&.request_body.inspect}"
-      raise Langsmith::APIError, "Failed to list runs: #{e.message}\nRequest: #{request_info}"
     end
 
     def get_thread(thread_id:)
-      response = connection.get("/api/v1/threads/#{thread_id}")
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "GET #{api_url}/api/v1/threads/#{thread_id}"
-      raise Langsmith::APIError, "Failed to fetch thread: #{e.message}\nRequest: #{request_info}"
+      begin
+        request(:get, "api/v1/threads/#{thread_id}")
+      rescue StandardError => e
+        request_info = "GET #{api_url}/api/v1/threads/#{thread_id}"
+        raise Langsmith::APIError, "Failed to fetch thread: #{e.message}\nRequest: #{request_info}"
+      end
     end
 
     def create_thread(name: nil, metadata: {})
-      response = connection.post("/api/v1/threads") do |req|
-        req.body = {
-          name: name,
-          metadata: metadata
-        }.compact
+      body = {
+        name: name,
+        metadata: metadata
+      }.compact
+
+      begin
+        request(:post, "api/v1/threads", {}, body)
+      rescue StandardError => e
+        request_info = "POST #{api_url}/api/v1/threads\nBody: #{body.inspect}"
+        raise Langsmith::APIError, "Failed to create thread: #{e.message}\nRequest: #{request_info}"
       end
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "POST #{api_url}/api/v1/threads\nBody: #{response&.env&.request_body.inspect}"
-      raise Langsmith::APIError, "Failed to create thread: #{e.message}\nRequest: #{request_info}"
     end
 
     def add_message(thread_id:, content:, additional_kwargs: {})
-      response = connection.post("/api/v1/threads/#{thread_id}/messages") do |req|
-        req.body = {
-          content: content,
-          additional_kwargs: additional_kwargs
-        }.compact
+      body = {
+        content: content,
+        additional_kwargs: additional_kwargs
+      }.compact
+
+      begin
+        request(:post, "api/v1/threads/#{thread_id}/messages", {}, body)
+      rescue StandardError => e
+        request_info = "POST #{api_url}/api/v1/threads/#{thread_id}/messages\nBody: #{body.inspect}"
+        raise Langsmith::APIError, "Failed to add message: #{e.message}\nRequest: #{request_info}"
       end
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "POST #{api_url}/api/v1/threads/#{thread_id}/messages\nBody: #{response&.env&.request_body.inspect}"
-      raise Langsmith::APIError, "Failed to add message: #{e.message}\nRequest: #{request_info}"
     end
 
     def list_messages(thread_id:)
-      response = connection.get("/api/v1/threads/#{thread_id}/messages")
-      handle_response(response)
-    rescue StandardError => e
-      request_info = "GET #{api_url}/api/v1/threads/#{thread_id}/messages"
-      raise Langsmith::APIError, "Failed to list messages: #{e.message}\nRequest: #{request_info}"
+      begin
+        request(:get, "api/v1/threads/#{thread_id}/messages")
+      rescue StandardError => e
+        request_info = "GET #{api_url}/api/v1/threads/#{thread_id}/messages"
+        raise Langsmith::APIError, "Failed to list messages: #{e.message}\nRequest: #{request_info}"
+      end
     end
 
     private
 
-    def parse_owner_repo_commit(owner_repo_commit)
-      parts = owner_repo_commit.split(/[\/:]/)
-      case parts.length
-      when 1
-        ["langchain", parts[0], nil]  # Just repo name
-      when 2
-        [*parts, nil]  # owner/repo
-      when 3
-        parts  # owner/repo:commit
-      else
-        raise Langsmith::ArgumentError, "Invalid format. Expected: 'name', 'owner/name', or 'owner/name:commit'"
-      end
-    end
-
     def handle_response(response)
-      unless response.success?
-        error_message = "API request failed: #{response.status} - #{response.body.inspect}"
-        request_info = "#{response.env.method.upcase} #{response.env.url}"
-        raise Langsmith::APIError, "#{error_message}\nRequest: #{request_info}"
+      if response.is_a?(Hash)
+        response
+      else
+        status = response.status
+        if status >= 200 && status < 300
+          JSON.parse(response.body)
+        else
+          error_message = "API request failed with status #{status}"
+          error_message += ": #{response.body}" if response.body
+          raise Langsmith::APIError, error_message
+        end
       end
-
-      response.body
     end
   end
 end

@@ -54,7 +54,11 @@ response = chain.call(
   qualification_goals: "Business size, messaging volume, current channels",
   disqualification_topics: "Personal use, no business registration",
   capabilities: "Can use tools: qualify, disqualify, handover",
-  question: "Hi, I'm interested in your service but I'm just an individual looking to chat with friends"
+  question: "Hi, I'm interested in your service but I'm just an individual looking to chat with friends",
+  config: {
+    debug: false,
+    verbose: false
+  }
 )
 
 puts "\nAvailable tools:"
