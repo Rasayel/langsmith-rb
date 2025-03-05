@@ -6,7 +6,11 @@ require_relative "langsmith/errors"
 require_relative "langsmith/traceable"
 require_relative "langsmith/models/base_model"
 require_relative "langsmith/models/message_template"
+require_relative "langsmith/models/prompt_template"
+require_relative "langsmith/models/model"
+require_relative "langsmith/models/tool"
 require_relative "langsmith/models/chat_prompt_template"
+require_relative "langsmith/models/prompt"
 require_relative "langsmith/client"
 require_relative "langsmith/hub"
 require_relative "langsmith/run_tree"
@@ -47,8 +51,8 @@ module Langsmith
       Wrappers::Cohere.new(client, **options)
     end
 
-    def prompt(prompt_name)
-      Models::ChatPromptTemplate.pull(prompt_name)
+    def prompt(prompt_name, include_model: false)
+      Models::Prompt.pull(prompt_name, include_model: include_model)
     end
   end
 

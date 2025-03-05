@@ -7,7 +7,7 @@ Langsmith.configure do |config|
 end
 
 # Pull a prompt that has tools defined
-prompt_json = Langsmith.hub.pull("qualify-agent")
+prompt_json = Langsmith.hub.pull("qualify-agent", include_model: true)
 prompt = Langsmith::Models::ChatPromptTemplate.from_json(prompt_json)
 
 puts "\nPrompt Tools:"

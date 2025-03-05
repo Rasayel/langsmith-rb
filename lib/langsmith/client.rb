@@ -168,19 +168,72 @@ module Langsmith
     end
 
     # Pull a prompt from LangChain Hub
-    def pull_prompt(repo_name)
+    def pull_prompt(repo_name, commit_hash: nil, include_model: false)
       # First get the repo details using the current workspace (-)
-      repo_data = request(:get, "api/v1/repos/-/#{repo_name}")["repo"]
-
-      # Get the commit details using the last commit hash
-      commit_hash = repo_data["last_commit_hash"]
-      commit_data = request(:get, "api/v1/commits/-/#{repo_name}/#{commit_hash}")
+      if commit_hash.nil?
+        repo_data = request(:get, "api/v1/repos/-/#{repo_name}")["repo"] 
+        commit_hash = repo_data["last_commit_hash"] 
+      end
+      commit_data = request(:get, "api/v1/commits/-/#{repo_name}/#{commit_hash}", { include_model: include_model })
 
       # Return the manifest from the commit data
       commit_data["manifest"]
     rescue StandardError => e
       request_info = "GET #{api_url}/api/v1/repos/-/#{repo_name} or GET #{api_url}/api/v1/commits/-/#{repo_name}/..."
       raise Langsmith::APIError, "Failed to pull prompt: #{e.message}\nRequest: #{request_info}"
+    end
+    
+    # Push a prompt to LangChain Hub
+    # @param repo_name [String] The name of the repository to push to
+    # @param object [Object] The prompt object to push
+    # @param parent_commit_hash [String] The parent commit hash (default: "latest")
+    # @param is_public [Boolean, nil] Whether the prompt should be public
+    # @param description [String, nil] A description of the prompt
+    # @param readme [String, nil] A readme for the prompt
+    # @param tags [Array<String>, nil] Tags for the prompt
+    # @return [String] The URL of the pushed prompt
+    def push_prompt(repo_name, object: nil, parent_commit_hash: "latest", is_public: nil, 
+                   description: nil, readme: nil, tags: nil)
+      # Prepare the prompt data
+      prompt_data = {}
+      
+      # Add object data if present (this would be a prompt template, model, etc.)
+      if object
+        # If it's a ChatPromptTemplate or Prompt, convert it to a proper format
+        if object.is_a?(Langsmith::Models::BaseModel)
+          prompt_data[:manifest] = object.as_json
+        else
+          prompt_data[:manifest] = object
+        end
+      end
+      
+      # Add metadata
+      prompt_data[:description] = description if description
+      prompt_data[:readme] = readme if readme
+      prompt_data[:is_public] = is_public unless is_public.nil?
+      prompt_data[:tags] = tags if tags
+      
+      # Make the API request
+      if parent_commit_hash == "latest"
+        # Get the latest commit hash first
+        repo_data = request(:get, "api/v1/repos/-/#{repo_name}")["repo"] rescue nil
+        parent_commit_hash = repo_data["last_commit_hash"] if repo_data
+      end
+      
+      # If no commit hash found, this is a new repo
+      endpoint = if parent_commit_hash && parent_commit_hash != "latest"
+        "api/v1/commits/-/#{repo_name}/#{parent_commit_hash}"
+      else
+        "api/v1/repos/-/#{repo_name}"
+      end
+      
+      response = request(:post, endpoint, {}, prompt_data)
+      
+      # Return the URL to the prompt in LangSmith
+      "#{api_url.chomp('/')}/p/#{response['repo']['owner']}/#{response['repo']['name']}/#{response['commit']['sha']}"
+    rescue StandardError => e
+      request_info = "POST #{api_url}/#{endpoint}\nBody: #{prompt_data.inspect}"
+      raise Langsmith::APIError, "Failed to push prompt: #{e.message}\nRequest: #{request_info}"
     end
 
     def list_runs(

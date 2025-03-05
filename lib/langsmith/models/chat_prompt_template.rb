@@ -3,8 +3,8 @@ module Langsmith
     class ChatPromptTemplate < BaseModel
       attr_reader :messages, :input_variables, :tools
 
-      def self.pull(repo_name)
-        prompt_json = Langsmith.hub.pull(repo_name)
+      def self.pull(repo_name, commit_hash: nil, include_model: false)
+        prompt_json = Langsmith.hub.pull(repo_name, commit_hash: commit_hash, include_model: include_model)
         from_json(prompt_json)
       end
 
@@ -18,7 +18,7 @@ module Langsmith
           end
         end.compact
         @input_variables = input_variables
-        @tools = tools.map { |tool| Tool.from_json(tool) }.compact
+        @tools = tools.is_a?(Array) ? tools : []
       end
 
       def self.from_json(json)
@@ -26,7 +26,10 @@ module Langsmith
                      json["id"] == ["langchain", "prompts", "chat", "ChatPromptTemplate"]
 
         # Extract tools if present
-        tools = json.dig("kwargs", "tools") || []
+        raw_tools = json.dig("kwargs", "tools") || []
+        
+        # Parse tools into proper Tool objects
+        tools = raw_tools.map { |tool_json| Tool.from_json(tool_json) }.compact
         
         # Only keep the supported kwargs (ignore template_format or other unexpected kwargs)
         supported_kwargs = {
@@ -69,48 +72,20 @@ module Langsmith
 
         messages
       end
-    end
-
-    # Tool class to represent LangSmith tools
-    class Tool < BaseModel
-      attr_reader :name, :description, :parameters
-
-      def initialize(name:, description:, parameters: {})
-        @name = name
-        @description = description
-        @parameters = parameters
+      
+      # Get tool names
+      def tool_names
+        tools.map(&:name)
       end
-
-      def self.from_json(json)
-        return unless json["type"] == "constructor" &&
-                     json["id"]&.include?("tools")
-
-        new(
-          name: json["kwargs"]["name"],
-          description: json["kwargs"]["description"],
-          parameters: json["kwargs"]["parameters"] || {}
-        )
+      
+      # Find a specific tool by name
+      def get_tool(name)
+        tools.find { |tool| tool.name == name }
       end
-
-      def to_s
-        params = parameters.map { |k, v| "  - #{k}: #{v}" }.join("\n")
-        <<~TOOL
-          #{name}:
-            Description: #{description}
-            Parameters:
-          #{params}
-        TOOL
-      end
-
-      def to_tool_definition
-        {
-          type: "function",
-          function: {
-            name: name,
-            description: description,
-            parameters: parameters
-          }
-        }
+      
+      # Check if this template has tools
+      def has_tools?
+        !tools.empty?
       end
     end
   end
