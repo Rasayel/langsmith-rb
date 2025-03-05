@@ -41,24 +41,76 @@ module Langsmith
       end
 
       def self.from_json(json)
-        # Try first to parse as a chat prompt template
-        template = ChatPromptTemplate.from_json(json)
+        # First, normalize the structure - extract appropriate parts based on the JSON type
+        template_json = extract_template_json(json)
+        return unless template_json
+
+        # Now try to parse as a chat prompt template
+        template = ChatPromptTemplate.from_json(template_json)
         return unless template
 
-        # Extract model if included in the JSON
-        model_json = json.dig("config", "model")
-        model = model_json ? Model.from_json(model_json) : nil
+        # Extract model information
+        model = extract_model_json(json)
         
-        # Extract tools from the prompt template or from a separate tools section
-        tools = template.tools || []
-        
-        # If there are tools in a separate config section, use those instead
-        tools_json = json.dig("config", "tools")
-        if tools_json && tools_json.is_a?(Array) && !tools_json.empty?
-          tools = tools_json.map { |tool_json| Tool.from_json(tool_json) }.compact
-        end
+        # Extract tools
+        tools = extract_tools(json, template.tools)
         
         new(template: template, model: model, tools: tools)
+      end
+
+      # Extracts the template JSON from various formats
+      # @param json [Hash] Original JSON from the API
+      # @return [Hash, nil] Normalized template JSON or nil if not found
+      def self.extract_template_json(json)
+        if json["type"] == "constructor" && json["id"] == ["langchain", "schema", "runnable", "RunnableSequence"]
+          # For RunnableSequence, the template is in the "first" section
+          return json.dig("kwargs", "first")
+        elsif json["type"] == "constructor" && json["id"] == ["langchain", "prompts", "chat", "ChatPromptTemplate"]
+          # Direct ChatPromptTemplate
+          return json
+        end
+        nil
+      end
+
+      # Extracts the model JSON from various formats
+      # @param json [Hash] Original JSON from the API
+      # @return [Model, nil] Parsed Model object or nil if not found
+      def self.extract_model_json(json)
+        model_json = nil
+        
+        if json["type"] == "constructor" && json["id"] == ["langchain", "schema", "runnable", "RunnableSequence"]
+          # The model information is usually in the "last" -> "bound" section for RunnableSequence
+          model_json = json.dig("kwargs", "last", "kwargs", "bound")
+        else
+          # Fall back to the old way of extracting model
+          model_json = json.dig("config", "model")
+        end
+        
+        Model.from_json(model_json) if model_json
+      end
+
+      # Extracts tools from various formats
+      # @param json [Hash] Original JSON from the API
+      # @param default_tools [Array] Default tools from the template
+      # @return [Array<Tool>] Array of parsed Tool objects
+      def self.extract_tools(json, default_tools = [])
+        tools = default_tools || []
+        
+        if json["type"] == "constructor" && json["id"] == ["langchain", "schema", "runnable", "RunnableSequence"]
+          # Check in the RunnableSequence format
+          tools_json = json.dig("kwargs", "last", "kwargs", "tools")
+          if tools_json && tools_json.is_a?(Array) && !tools_json.empty?
+            tools = tools_json.map { |tool_json| Tool.from_json(tool_json) }.compact
+          end
+        else
+          # Check in the older format
+          tools_json = json.dig("config", "tools")
+          if tools_json && tools_json.is_a?(Array) && !tools_json.empty?
+            tools = tools_json.map { |tool_json| Tool.from_json(tool_json) }.compact
+          end
+        end
+        
+        tools
       end
 
       def format(**kwargs)
