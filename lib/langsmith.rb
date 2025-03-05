@@ -46,6 +46,10 @@ module Langsmith
     def wrap_cohere(client = nil, **options)
       Wrappers::Cohere.new(client, **options)
     end
+
+    def prompt(prompt_name)
+      Models::ChatPromptTemplate.pull(prompt_name)
+    end
   end
 
   class Configuration
