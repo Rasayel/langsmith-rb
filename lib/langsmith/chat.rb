@@ -55,7 +55,7 @@ module Langsmith
       end
     end
 
-    def call(prompt_or_messages, **inputs)
+    def call(messages, **inputs)
       run_tree = RunTree.new(
         name: inputs.delete(:name) || "langsmith.chat",
         run_type: "chain",
@@ -70,17 +70,19 @@ module Langsmith
       run_tree.post
 
       begin
-        # Format messages if needed
-        messages = if prompt_or_messages.is_a?(Models::ChatPromptTemplate)
-          @prompt = prompt_or_messages # Store for future use
-          prompt_or_messages.format(**inputs)
+        # Validate message format
+        processed_messages = if messages.is_a?(Models::ChatPromptTemplate)
+          @prompt = messages # Store for future use
+          messages.format(**inputs)
+        elsif messages.is_a?(Array) && messages.all? { |m| m.is_a?(Hash) && m[:role] && m[:content] }
+          messages
         else
-          prompt_or_messages
+          raise ArgumentError, "Expected messages to be an array of message objects (with role and content keys) or a ChatPromptTemplate. Got #{messages.class}"
         end
 
         # Call the LLM with tool definitions
         response = llm.call(
-          messages: messages,
+          messages: processed_messages,
           tools: @tools.values.map(&:to_tool_definition),
           parent_run_id: run_tree.id
         )
@@ -99,46 +101,42 @@ module Langsmith
                 parent_run_id: run_tree.id
               )
               
-              # Add tool response back to messages
-              messages << {
+              # Add the tool call and result as an assistant and tool message
+              processed_messages << {
                 role: "assistant",
                 content: nil,
                 tool_calls: [tool_call]
               }
-              messages << {
+              
+              processed_messages << {
                 role: "tool",
-                content: tool_result[:result].to_s,
+                content: tool_result.to_s,
                 tool_call_id: tool_call["id"]
               }
             end
           end
           
-          # Get final response after tool usage
+          # Make a follow-up call to the LLM with the tool results
           response = llm.call(
-            messages: messages,
+            messages: processed_messages,
             tools: @tools.values.map(&:to_tool_definition),
             parent_run_id: run_tree.id
           )
         end
 
-        # Extract the final response
-        content = response.dig("choices", 0, "message", "content")
+        # Update the run_tree with the response
+        run_tree.end(outputs: response)
         
-        # Update run with success
-        run_tree.end(
-          outputs: {
-            response: content,
-            messages: messages
-          }
-        )
-        run_tree.patch
-
-        content
+        # Extract and return the assistant message content
+        response.dig("choices", 0, "message", "content") || 
+          response.dig("choices", 0, "message", "function_call", "arguments") ||
+          "No response from assistant"
       rescue StandardError => e
-        run_tree.end(error: e.message)
-        run_tree.patch
-        raise
+        run_tree.end(error: e)
+        raise e
       end
     end
+    
+    traceable :call, run_type: "chain", tags: ["chat"]
   end
 end

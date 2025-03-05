@@ -1,18 +1,94 @@
 require "langsmith"
 require "dotenv/load"
+require "securerandom"
 
 # Configure Langsmith
 Langsmith.configure do |config|
   config.api_key = ENV["LANGSMITH_API_KEY"]
-  config.project_name = "chat-example"
+  config.project_name = ENV["LANGSMITH_PROJECT"] || "chat-example"
 end
 
-# In a real app, this would be stored in your database
-# and retrieved when a new message comes in
-THREAD_ID = "550e8400-e29b-41d4-a716-446655440000"
+# Create a simple qualified conversation wrapper
+class QualificationConversation
+  include Langsmith::Traceable
+  
+  attr_reader :thread_id, :llm, :context
+  
+  def initialize(thread_id: nil, context: {})
+    @thread_id = thread_id || SecureRandom.uuid
+    @llm = Langsmith.wrap_openai(access_token: ENV["OPENAI_API_KEY"], model: "gpt-3.5-turbo")
+    @context = context
+    @session_id = @thread_id
+    @messages = [] # Store conversation history
+  end
+  
+  def process_message(message)
+    # Create a fresh chat instance for this message
+    chat = Langsmith::Chat.new(
+      llm: @llm,
+      thread_id: @thread_id,
+      context: @context.merge("question" => message),
+      parent_run_id: Langsmith.current_run_tree&.id  # Link to parent run if one exists
+    )
+    
+    # Process with internal tracing
+    trace(name: "process_message", run_type: "chain", inputs: { message: message }) do |run|
+      puts "Processing message: #{message}"
+      
+      # First analyze the message intent
+      intent = trace(name: "analyze_intent", run_type: "tool", inputs: { message: message }) do |intent_run|
+        # We could call an actual classifier here, but we'll mock it
+        intent = case message.downcase
+          when /pricing|cost|price/
+            "pricing_inquiry"
+          when /register|business|company/
+            "business_registration"
+          else
+            "general_inquiry"
+          end
+        
+        puts "Detected intent: #{intent}"
+        
+        # Add some feedback to this intent detection
+        intent_run.add_feedback(
+          key: "accuracy", 
+          value: 0.9, 
+          comment: "Intent classification looks accurate"
+        )
+        
+        # Return the intent
+        { intent: intent }
+      end
+      
+      # Add user message to history
+      @messages << { role: "user", content: message }
+      
+      # Process the message with history based on intent
+      response = chat.call(
+        @messages,
+        name: "Qualification Message: #{intent[:intent]}"  # Name based on intent
+      )
+      
+      # Add assistant response to history
+      @messages << { role: "assistant", content: response }
+      
+      # Add feedback on the overall response quality
+      run.add_feedback(
+        key: "response_quality",
+        value: 0.85,
+        comment: "Good qualification response"
+      )
+      
+      # Return the response
+      response
+    end
+  end
+  
+  # Make the process_message method traceable
+  traceable :process_message, run_type: "chain", tags: ["qualification", "conversation"]
+end
 
 # Initial context that doesn't need to be repeated
-# In a real app, this would be loaded from your database
 AGENT_CONTEXT = {
   "agent_name" => "Alex",
   "business_website" => "rasayel.io",
@@ -22,81 +98,53 @@ AGENT_CONTEXT = {
   "other_languages" => "Arabic, Spanish",
   "qualification_goals" => "Business size, messaging volume, current channels",
   "disqualification_topics" => "Personal use, no business registration",
-  "capabilities" => "Can use tools: qualify, disqualify, handover",
-  "question" => nil  # This will be set for each message
+  "capabilities" => "Can use tools: qualify, disqualify, handover"
 }
 
-# Create a run tree for the entire conversation
-CONVERSATION_RUN = Langsmith::RunTree.new(
-  name: "Qualification Chat",
-  run_type: "chain",
-  inputs: {},
-  metadata: {
-    "thread_id" => THREAD_ID,
-    "session_id" => THREAD_ID
-  }
-)
-CONVERSATION_RUN.post
+# Create a new conversation instance
+conversation = QualificationConversation.new(context: AGENT_CONTEXT)
+thread_id = conversation.thread_id
 
-def handle_incoming_message(message, thread_id, context)
-  puts "\n=== New webhook received ==="
-  puts "Thread ID: #{thread_id}"
-  puts "User message: #{message}"
+# Start our demo
+puts "Starting qualification conversation example"
+puts "Thread ID: #{thread_id}"
+
+# Wrap the entire conversation in a parent trace
+Langsmith.trace(
+  name: "Qualification Conversation Flow",
+  run_type: "chain",
+  tags: ["example", "conversation"],
+  metadata: { "thread_id" => thread_id, "session_id" => thread_id }
+) do |parent_run|
+  # First message: Initial inquiry
+  puts "\n=== First webhook: Initial inquiry ==="
+  response = conversation.process_message("Hi, I'm interested in your service but I'm just an individual looking to chat with friends")
+  puts "Assistant response: #{response}"
   
-  # Create a fresh chat instance
-  # In a real app, this would happen in a new process/webhook
-  chat = Langsmith::Chat.new(
-    llm: Langsmith.wrap_openai(access_token: ENV["OPENAI_API_KEY"]),
-    thread_id: thread_id,
-    context: context.merge("question" => message),
-    parent_run_id: CONVERSATION_RUN.id  # Link all messages to the same conversation
+  # Second message: Follow-up about business
+  puts "\n=== Second webhook: Follow-up about business ==="
+  response = conversation.process_message("What if I register a business? Would that help? I'm thinking of starting a small online shop.")
+  puts "Assistant response: #{response}"
+  
+  # Third message: Business details
+  puts "\n=== Third webhook: Business details ==="
+  response = conversation.process_message("I'm planning to start a small e-commerce business selling handmade jewelry. We expect about 100 customers initially and would need to communicate with them about orders and shipping.")
+  puts "Assistant response: #{response}"
+  
+  # Fourth message: Pricing inquiry
+  puts "\n=== Fourth webhook: Pricing inquiry ==="
+  response = conversation.process_message("Great! What would the pricing look like for my business size?")
+  puts "Assistant response: #{response}"
+  
+  # Add final feedback on the overall conversation
+  parent_run.add_feedback(
+    key: "conversation_quality",
+    value: 0.9,
+    comment: "Conversation flow was smooth and appropriate"
   )
   
-  # Process the message with history
-  response = chat.call(
-    message, 
-    get_history: true,
-    name: "Qualification Message"  # Give each message a meaningful name
-  )
-  puts "\nAssistant response:"
-  puts response
-  response
+  # Return final status
+  { "thread_id" => thread_id, "status" => "completed" }
 end
 
-# Simulate a conversation over webhooks
-puts "\n=== First webhook: Initial inquiry ==="
-handle_incoming_message(
-  "Hi, I'm interested in your service but I'm just an individual looking to chat with friends",
-  THREAD_ID,
-  AGENT_CONTEXT
-)
-
-puts "\n=== Second webhook: Follow-up about business ==="
-handle_incoming_message(
-  "What if I register a business? Would that help? I'm thinking of starting a small online shop.",
-  THREAD_ID,
-  AGENT_CONTEXT
-)
-
-puts "\n=== Third webhook: Business details ==="
-handle_incoming_message(
-  "I'm planning to start a small e-commerce business selling handmade jewelry. We expect about 100 customers initially and would need to communicate with them about orders and shipping.",
-  THREAD_ID,
-  AGENT_CONTEXT
-)
-
-puts "\n=== Fourth webhook: Pricing inquiry ==="
-handle_incoming_message(
-  "Great! What would the pricing look like for my business size?",
-  THREAD_ID,
-  AGENT_CONTEXT
-)
-
-# End the conversation run
-CONVERSATION_RUN.end(
-  outputs: {
-    "thread_id" => THREAD_ID,
-    "status" => "completed"
-  }
-)
-CONVERSATION_RUN.patch
+puts "\nChat example completed!"

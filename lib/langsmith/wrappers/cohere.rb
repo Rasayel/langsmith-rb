@@ -5,11 +5,17 @@ module Langsmith
     class Cohere
       include Langsmith::Traceable
 
+      attr_reader :client, :model
+
       def initialize(client = nil, **options)
         @client = client || ::Cohere::Client.new(**options)
+        @model_name = "command"
       end
 
       def call(messages:, model: "command", parent_run_id: nil, **kwargs)
+        # Update model if provided
+        @model_name = model
+        
         chat_history = messages[0...-1].map do |m|
           {
             role: m[:role] == "assistant" ? "CHATBOT" : "USER",
@@ -43,12 +49,10 @@ module Langsmith
           }
         }
       end
-
-      traceable(
-        run_type: "llm",
-        name: "Cohere Chat",
-        parent_run_id: lambda { |obj, *args, **kwargs| kwargs[:parent_run_id] }
-      )
+      
+      # Make the call method traceable - AFTER the method definition
+      traceable :call, run_type: "llm", name: "Cohere Chat",
+                metadata: { model_name: "command" }
     end
 
     def self.wrap_cohere(client = nil, **options)

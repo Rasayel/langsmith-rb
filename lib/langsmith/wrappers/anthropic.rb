@@ -5,11 +5,17 @@ module Langsmith
     class Anthropic
       include Langsmith::Traceable
 
+      attr_reader :client, :model
+
       def initialize(client = nil, **options)
         @client = client || ::Anthropic::Client.new(**options)
+        @model_name = "claude-3-opus-20240229"
       end
 
       def call(messages:, model: "claude-3-opus-20240229", parent_run_id: nil, **kwargs)
+        # Update model if provided
+        @model_name = model
+        
         # Convert messages to Anthropic format
         system_message = messages.find { |m| m[:role] == "system" }&.dig(:content)
         user_messages = messages.select { |m| m[:role] != "system" }
@@ -41,12 +47,10 @@ module Langsmith
           usage: response.usage.to_h
         }
       end
-
-      traceable(
-        run_type: "llm",
-        name: "Anthropic Chat",
-        parent_run_id: lambda { |obj, *args, **kwargs| kwargs[:parent_run_id] }
-      )
+      
+      # Make the call method traceable - AFTER the method definition
+      traceable :call, run_type: "llm", name: "Anthropic Chat",
+                metadata: { model_name: "claude-3-opus-20240229" }
     end
 
     def self.wrap_anthropic(client = nil, **options)

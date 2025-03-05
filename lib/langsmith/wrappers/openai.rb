@@ -5,7 +5,7 @@ module Langsmith
     class OpenAI
       include Langsmith::Traceable
 
-      # Set up tracing for OpenAI calls
+      attr_reader :client, :model
      
       def initialize(client = nil, **options)
         @client = client || ::OpenAI::Client.new(**options)
@@ -54,13 +54,9 @@ module Langsmith
         }
       end
 
-      traceable(
-        run_type: "llm",
-        name: "Open AI",
-        parent_run_id: lambda { |obj, *args, **kwargs| kwargs[:parent_run_id] },
-        metadata: { model_name: @model_name}
-      )
-
+      # Make the call method traceable - AFTER the method definition
+      traceable :call, run_type: "llm", name: "OpenAI",
+                metadata: { model_name: "gpt-3.5-turbo" }
     end
 
     def wrap_openai(client = nil, **options)
