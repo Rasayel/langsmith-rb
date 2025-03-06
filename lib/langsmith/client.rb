@@ -8,6 +8,12 @@ module Langsmith
   class Client
     attr_reader :api_url, :api_key, :tenant_id
 
+    # Initialize a new LangSmith client
+    #
+    # @param api_url [String] The base URL for the LangSmith API
+    # @param api_key [String] The API key for authentication with LangSmith
+    # @param tenant_id [String, nil] Optional tenant ID for multi-tenant environments
+    # @raise [Langsmith::ConfigurationError] If the API key is not provided
     def initialize(api_url:, api_key:, tenant_id: nil)
       @api_url = api_url
       @api_key = api_key
@@ -16,6 +22,14 @@ module Langsmith
     end
 
     # Make an HTTP request to the LangSmith API
+    #
+    # @param method [Symbol, String] The HTTP method to use (:get, :post, :patch, :delete)
+    # @param path [String] The API endpoint path (without base URL)
+    # @param params [Hash] Query parameters to include in the request
+    # @param body [Hash, nil] Request body for POST/PATCH requests
+    # @return [Hash, String] Parsed JSON response or raw body if not JSON
+    # @raise [ArgumentError] If an unsupported HTTP method is provided
+    # @raise [Langsmith::APIError] If the API request fails
     def request(method, path, params = {}, body = nil)
       uri = URI.join(api_url, path)
       
@@ -62,6 +76,24 @@ module Langsmith
       end
     end
 
+    # Create a new run in LangSmith
+    #
+    # @param name [String] Name of the run
+    # @param run_type [String, nil] Type of run (e.g., 'llm', 'chain', 'tool')
+    # @param inputs [Hash] Input values for the run
+    # @param run_id [String, nil] Optional run ID (will be generated if not provided)
+    # @param tags [Array<String>] Tags to associate with the run
+    # @param metadata [Hash] Additional metadata for the run
+    # @param parent_run_id [String, nil] ID of the parent run if this is a child run
+    # @param project_name [String, nil] Project to associate the run with (defaults to configured project)
+    # @param start_time [Time, nil] Start time of the run
+    # @param end_time [Time, nil] End time of the run
+    # @param status [String] Status of the run ('started', 'completed', 'error')
+    # @param extra [Hash, nil] Additional data to include with the run
+    # @param reference_example_id [String, nil] Reference example ID
+    # @param session_id [String, nil] Session ID to group related runs
+    # @return [Hash] The created run object
+    # @raise [Langsmith::APIError] If the API request fails
     def create_run(
       name:,
       run_type: nil,
@@ -111,6 +143,22 @@ module Langsmith
       end
     end
 
+    # Update an existing run in LangSmith
+    #
+    # @param run_id [String] ID of the run to update
+    # @param end_time [Time, String, nil] End time of the run
+    # @param error [String, Hash, nil] Error information if the run failed
+    # @param inputs [Hash, nil] Updated input values (will replace existing inputs)
+    # @param outputs [Hash, nil] Output values from the run
+    # @param metadata [Hash, nil] Additional metadata to add or update
+    # @param status [String, nil] New status of the run ('completed', 'error', etc.)
+    # @param parent_run_id [String, nil] ID of the parent run
+    # @param reference_example_id [String, nil] Reference example ID
+    # @param feedback_stats [Hash, nil] Feedback statistics for the run
+    # @param session_id [String, nil] Session ID to group related runs
+    # @return [Hash] The updated run object
+    # @raise [Langsmith::ArgumentError] If end_time is not a valid format
+    # @raise [Langsmith::APIError] If the API request fails
     def update_run(
       run_id:,
       end_time: nil,
@@ -158,6 +206,11 @@ module Langsmith
       end
     end
 
+    # Get a single run by ID
+    #
+    # @param run_id [String] ID of the run to retrieve
+    # @return [Hash] The run object
+    # @raise [Langsmith::APIError] If the API request fails
     def get_run(run_id:)
       begin
         request(:get, "api/v1/runs/#{run_id}")
@@ -168,6 +221,15 @@ module Langsmith
     end
 
     # Pull a prompt from LangChain Hub
+    #
+    # @param repo_name [String] The name of the repository to pull from
+    # @param commit_hash [String, nil] The specific commit hash to pull (latest if nil)
+    # @param include_model [Boolean] Whether to include model information in the response
+    # @return [Hash] The prompt manifest containing template information
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   client.pull_prompt("my-prompt")
+    #   client.pull_prompt("my-prompt", commit_hash: "abc123")
     def pull_prompt(repo_name, commit_hash: nil, include_model: false)
       # First get the repo details using the current workspace (-)
       if commit_hash.nil?
@@ -184,6 +246,7 @@ module Langsmith
     end
     
     # Push a prompt to LangChain Hub
+    #
     # @param repo_name [String] The name of the repository to push to
     # @param object [Object] The prompt object to push
     # @param parent_commit_hash [String] The parent commit hash (default: "latest")
@@ -192,6 +255,10 @@ module Langsmith
     # @param readme [String, nil] A readme for the prompt
     # @param tags [Array<String>, nil] Tags for the prompt
     # @return [String] The URL of the pushed prompt
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   client.push_prompt("my-prompt", object: { template: "Hello, {{name}}!" })
+    #   client.push_prompt("my-prompt", object: template, is_public: true)
     def push_prompt(repo_name, object: nil, parent_commit_hash: "latest", is_public: nil, 
                    description: nil, readme: nil, tags: nil)
       # Prepare the prompt data
@@ -237,18 +304,35 @@ module Langsmith
     end
 
     # List runs with advanced filtering
+    #
     # @param project_name [String, nil] Project to filter by
     # @param parent_run_id [String, nil] Parent run ID to filter by
     # @param trace_id [String, nil] Trace ID to filter by
-    # @param run_type [String, nil] Run type to filter by
+    # @param run_type [String, nil] Run type to filter by (e.g., 'llm', 'chain', 'tool')
     # @param session_id [String, Array<String>, nil] Session ID(s) to filter by
     # @param filter_tags [Array<String>, nil] Tags to filter by
     # @param run_name [String, nil] Run name to filter by
-    # @param start_time [Time, nil] Start time for filtering
-    # @param end_time [Time, nil] End time for filtering
+    # @param start_time [Time, nil] Start time for filtering runs
+    # @param end_time [Time, nil] End time for filtering runs
     # @param limit [Integer] Maximum number of runs to return
     # @param offset [Integer] Offset for pagination
     # @return [Array<Hash>] Array of run objects
+    # @raise [Langsmith::APIError] If the API request fails
+    # @note The LangSmith API requires at least one identifier with valid values:
+    #   - parent_run_id: A valid run ID
+    #   - trace_id: A valid trace ID
+    #   - session_id: A valid UUID or array of UUIDs (not wildcards)
+    # @example Get all runs of type 'llm' with a specific tag
+    #   client.list_runs(
+    #     run_type: "llm",
+    #     filter_tags: ["production"],
+    #     limit: 10
+    #   )
+    # @example Get child runs of a specific parent run
+    #   client.list_runs(
+    #     parent_run_id: "1234-5678-90ab-cdef",
+    #     limit: 20
+    #   )
     def list_runs(
       project_name: nil,
       parent_run_id: nil,
@@ -322,6 +406,13 @@ module Langsmith
       end
     end
 
+    # Get a thread by ID
+    #
+    # @param thread_id [String] The ID of the thread to retrieve
+    # @return [Hash] The thread object containing metadata and properties
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   client.get_thread(thread_id: "1234-5678-90ab-cdef")
     def get_thread(thread_id:)
       begin
         request(:get, "api/v1/threads/#{thread_id}")
@@ -331,6 +422,14 @@ module Langsmith
       end
     end
 
+    # Create a new thread for grouping related messages
+    #
+    # @param name [String, nil] Optional name for the thread
+    # @param metadata [Hash] Additional metadata to associate with the thread
+    # @return [Hash] The created thread object including its ID
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   client.create_thread(name: "Customer Support", metadata: {user_id: "12345"})
     def create_thread(name: nil, metadata: {})
       body = {
         name: name,
@@ -345,6 +444,18 @@ module Langsmith
       end
     end
 
+    # Add a message to an existing thread
+    #
+    # @param thread_id [String] The ID of the thread to add the message to
+    # @param content [String, Hash] The content of the message
+    # @param additional_kwargs [Hash] Additional parameters for the message
+    # @return [Hash] The created message object
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   client.add_message(
+    #     thread_id: "1234-5678-90ab-cdef", 
+    #     content: "Hello, how can I help you today?"
+    #   )
     def add_message(thread_id:, content:, additional_kwargs: {})
       body = {
         content: content,
@@ -359,6 +470,13 @@ module Langsmith
       end
     end
 
+    # List all messages in a thread
+    #
+    # @param thread_id [String] The ID of the thread to retrieve messages from
+    # @return [Array<Hash>] Array of message objects in the thread
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   client.list_messages(thread_id: "1234-5678-90ab-cdef")
     def list_messages(thread_id:)
       begin
         request(:get, "api/v1/threads/#{thread_id}/messages")
@@ -369,12 +487,30 @@ module Langsmith
     end
 
     # Create feedback for a run
-    # @param run_id [String] ID of the run
-    # @param key [String] Feedback key
-    # @param value [Object] Feedback value
-    # @param comment [String, nil] Optional comment
-    # @param feedback_id [String, nil] Optional feedback ID
-    # @return [Hash] Response from the API
+    #
+    # Feedback allows you to store evaluations and annotations for runs in LangSmith.
+    # Common use cases include human ratings, automated evaluation scores, or custom annotations.
+    #
+    # @param run_id [String] ID of the run to attach feedback to
+    # @param key [String] Feedback key (e.g., 'accuracy', 'relevance', 'thumbs_up')
+    # @param value [Object] Feedback value (can be boolean, number, string, or structured data)
+    # @param comment [String, nil] Optional comment explaining the feedback
+    # @param feedback_id [String, nil] Optional custom feedback ID (UUID generated if not provided)
+    # @return [Hash] The created feedback object
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example Create a numerical score feedback
+    #   client.create_feedback(
+    #     run_id: "1234-5678-90ab-cdef",
+    #     key: "accuracy",
+    #     value: 0.95,
+    #     comment: "Very accurate response"
+    #   )
+    # @example Create a boolean feedback
+    #   client.create_feedback(
+    #     run_id: "1234-5678-90ab-cdef",
+    #     key: "helpful",
+    #     value: true
+    #   )
     def create_feedback(run_id:, key:, value:, comment: nil, feedback_id: nil)
       feedback_id ||= SecureRandom.uuid
       
@@ -394,9 +530,19 @@ module Langsmith
       end
     end
 
-    # List feedback for a run
-    # @param run_id [String] ID of the run
-    # @return [Array<Hash>] Array of feedback objects
+    # List all feedback for a specific run
+    #
+    # Retrieves all feedback that has been submitted for a specific run,
+    # which can include multiple feedback items from different keys.
+    #
+    # @param run_id [String] ID of the run to retrieve feedback for
+    # @return [Array<Hash>] Array of feedback objects with their values and metadata
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   feedback_items = client.list_run_feedback(run_id: "1234-5678-90ab-cdef")
+    #   feedback_items.each do |feedback|
+    #     puts "#{feedback['key']}: #{feedback['value']}"
+    #   end
     def list_run_feedback(run_id:)
       params = { run_id: run_id }
       
@@ -408,11 +554,27 @@ module Langsmith
       end
     end
 
-    # Update feedback for a run
-    # @param feedback_id [String] ID of the feedback
-    # @param value [Object] New feedback value
-    # @param comment [String, nil] New comment
-    # @return [Hash] Response from the API
+    # Update existing feedback
+    #
+    # Allows you to modify the value or comment of existing feedback.
+    # Either value or comment (or both) must be provided.
+    #
+    # @param feedback_id [String] ID of the feedback to update
+    # @param value [Object, nil] New feedback value (can be boolean, number, string, or structured data)
+    # @param comment [String, nil] New comment explaining the feedback
+    # @return [Hash] The updated feedback object
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example Update the value of existing feedback
+    #   client.update_feedback(
+    #     feedback_id: "feedback-1234-5678",
+    #     value: 0.8
+    #   )
+    # @example Update both value and comment
+    #   client.update_feedback(
+    #     feedback_id: "feedback-1234-5678",
+    #     value: false,
+    #     comment: "Updated assessment after review"
+    #   )
     def update_feedback(feedback_id:, value: nil, comment: nil)
       body = {}.tap do |h|
         h[:value] = value unless value.nil?
@@ -427,9 +589,15 @@ module Langsmith
       end
     end
 
-    # Delete feedback
-    # @param feedback_id [String] ID of the feedback
-    # @return [Hash] Response from the API
+    # Delete existing feedback
+    #
+    # Permanently removes feedback from LangSmith.
+    #
+    # @param feedback_id [String] ID of the feedback to delete
+    # @return [Hash] Response confirming deletion
+    # @raise [Langsmith::APIError] If the API request fails
+    # @example
+    #   client.delete_feedback(feedback_id: "feedback-1234-5678")
     def delete_feedback(feedback_id:)
       begin
         request(:delete, "api/v1/feedback/#{feedback_id}")
@@ -439,9 +607,19 @@ module Langsmith
       end
     end
 
-    # Read a run
-    # @param run_id [String] ID of the run
-    # @return [Hash] Run object
+    # Read a run by ID (alias for get_run)
+    #
+    # Retrieves the complete details of a specific run, including inputs, outputs, and metadata.
+    #
+    # @param run_id [String] ID of the run to retrieve
+    # @return [Hash] The complete run object with all properties
+    # @raise [Langsmith::APIError] If the API request fails
+    # @see #get_run
+    # @example
+    #   run = client.read_run(run_id: "1234-5678-90ab-cdef")
+    #   puts "Run name: #{run['name']}"
+    #   puts "Run type: #{run['run_type']}"
+    #   puts "Status: #{run['status']}"
     def read_run(run_id:)
       begin
         request(:get, "api/v1/runs/#{run_id}")
