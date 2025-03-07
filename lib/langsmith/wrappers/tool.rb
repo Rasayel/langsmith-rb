@@ -63,6 +63,7 @@ module Langsmith
 
       # Set up tracing for tool calls
       traceable(
+        :call, 
         run_type: "tool",
         name: -> { "langsmith.tool.#{@name}" },
         metadata: -> { { 
