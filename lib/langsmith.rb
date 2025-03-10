@@ -84,7 +84,7 @@ module Langsmith
     # @yield [RunTree] The run tree object for the trace
     # @return [Object] The result of the block
     def trace(name:, run_type: "chain", inputs: {}, tags: [], metadata: {}, 
-             parent_run_id: nil, project_name: nil, auto_end: true, session_id: nil)
+             parent_run_id: nil, project_name: nil, auto_end: true, session_id: nil, reference_example_id: nil)
       # Use current run as parent if available and no parent specified
       parent = parent_run_id || (current_run_tree&.id if current_run_tree)
       
@@ -97,7 +97,8 @@ module Langsmith
         metadata: metadata,
         parent_run_id: parent,
         project_name: project_name,
-        session_id: session_id
+        session_id: session_id,
+        reference_example_id: reference_example_id
       )
       
       # Start the run
