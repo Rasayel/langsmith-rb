@@ -84,7 +84,7 @@ module Langsmith
     # @yield [RunTree] The run tree object for the trace
     # @return [Object] The result of the block
     def trace(name:, run_type: "chain", inputs: {}, tags: [], metadata: {}, 
-             parent_run_id: nil, project_name: nil, auto_end: true)
+             parent_run_id: nil, project_name: nil, auto_end: true, session_id: nil)
       # Use current run as parent if available and no parent specified
       parent = parent_run_id || (current_run_tree&.id if current_run_tree)
       
@@ -96,7 +96,8 @@ module Langsmith
         tags: tags,
         metadata: metadata,
         parent_run_id: parent,
-        project_name: project_name
+        project_name: project_name,
+        session_id: session_id
       )
       
       # Start the run
@@ -126,7 +127,7 @@ module Langsmith
           run.end(error: e.message)
           run.patch
         end
-        raise
+        puts "Error while calling LangSmith within the SDK"
       ensure
         # Restore the previous run
         set_current_run_tree(previous_run)
