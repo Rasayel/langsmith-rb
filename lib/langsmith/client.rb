@@ -92,6 +92,7 @@ module Langsmith
     # @param extra [Hash, nil] Additional data to include with the run
     # @param reference_example_id [String, nil] Reference example ID
     # @param session_id [String, nil] Session ID to group related runs
+    # @param session_name [String, nil] Session Name to group related runs
     # @return [Hash] The created run object
     # @raise [Langsmith::APIError] If the API request fails
     def create_run(
@@ -108,7 +109,8 @@ module Langsmith
       status: "started",
       extra: nil,
       reference_example_id: nil,
-      session_id: nil
+      session_id: nil,
+      session_name: nil
     )
       run_id ||= SecureRandom.uuid
       project_name ||= Langsmith.configuration.project_name
@@ -125,6 +127,7 @@ module Langsmith
         tags: tags,
         metadata: metadata,
         parent_run_id: parent_run_id,
+        session_name: session_name,
         project_name: project_name,
         start_time: start_time&.iso8601,
         end_time: end_time&.iso8601,

@@ -5,7 +5,7 @@ module Langsmith
   class RunTree
     attr_reader :name, :run_type, :inputs, :outputs, :error, :start_time, :end_time, 
                 :runtime, :reference_example_id, :parent_run_id, :tags, :metadata,
-                :session_id, :id, :client, :project_name
+                :session_id, :session_name, :id, :client, :project_name
 
     # Create a new run tree
     # @param name [String] Name of the run
@@ -18,6 +18,7 @@ module Langsmith
     # @param tags [Array<String>] Tags to associate with the run
     # @param metadata [Hash] Metadata for the run
     # @param session_id [String, nil] Session ID for grouping related runs
+    # @param session_name [String, nil] Session Name for grouping related runs
     # @param project_name [String, nil] Project name to use
     # @param client [Langsmith::Client] Client to use for API calls
     def initialize(
@@ -31,6 +32,7 @@ module Langsmith
       tags: [],
       metadata: {},
       session_id: nil,
+      session_name: nil,
       project_name: nil,
       client: Langsmith.client
     )
@@ -44,6 +46,7 @@ module Langsmith
       @tags = tags
       @metadata = metadata
       @session_id = session_id
+      @session_name = session_name
       @project_name = project_name || Langsmith.configuration.project_name
       @client = client
       @start_time = Time.now.utc
@@ -62,6 +65,7 @@ module Langsmith
         tags: tags,
         metadata: metadata,
         session_id: session_id,
+        session_name: session_name,
         status: "started",
         run_id: id, # Use our pre-generated ID
         project_name: project_name
