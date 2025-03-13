@@ -13,7 +13,7 @@ begin
   prompt_name = "testing-prompt"
   puts "Fetching prompt '#{prompt_name}' from your workspace..."
   
-  prompt = Langsmith::Models::ChatPromptTemplate.pull(prompt_name)
+  prompt = Langsmith.prompt(prompt_name, include_model:true)
 
   # Example usage of the prompt
   messages = prompt.format(

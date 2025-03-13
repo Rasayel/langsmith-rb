@@ -35,7 +35,7 @@ module Langsmith
       
       # Add query parameters to URI if present
       uri.query = URI.encode_www_form(params) if params && !params.empty?
-      
+
       # Create the request object based on the HTTP method
       request = case method.to_s.downcase
       when 'get'
@@ -118,14 +118,14 @@ module Langsmith
       # If session_id is provided, ensure it's in metadata
       metadata = metadata.dup
       metadata["session_id"] = session_id if session_id
-      
+
       body = {
         id: run_id,
         name: name,
         run_type: run_type,
         inputs: inputs,
         tags: tags,
-        metadata: metadata,
+        extra: metadata,
         parent_run_id: parent_run_id,
         session_name: session_name,
         project_name: project_name,

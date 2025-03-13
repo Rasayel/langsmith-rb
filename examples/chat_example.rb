@@ -114,7 +114,15 @@ Langsmith.trace(
   name: "Qualification Conversation Flow",
   run_type: "chain",
   tags: ["example", "conversation"],
-  metadata: { "thread_id" => thread_id, "session_id" => thread_id }
+  metadata: { 
+    "thread_id" => thread_id, 
+    "session_id" => thread_id, 
+    "string_key" => "string_value", 
+    something: "symbol_key_value", 
+    nested: { "level" => 1, sublevel: 2 },
+    number: 42,
+    boolean: true
+  }
 ) do |parent_run|
   # First message: Initial inquiry
   puts "\n=== First webhook: Initial inquiry ==="

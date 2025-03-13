@@ -113,6 +113,41 @@ calc = Calculator.new
 result = calc.add(5, 3) # This call is automatically traced
 ```
 
+#### Important Tracing Behavior
+
+**Return Values Matter**: When using any form of tracing, the return value from your block is crucial for proper trace completion. The SDK uses this return value to automatically end the trace with the appropriate outputs.
+
+```ruby
+# Good: Explicitly returning a value from your trace block
+Langsmith.trace(name: "My Operation", run_type: "chain") do |run|
+  result = perform_operation()
+  result # This value will be used as the trace output
+end
+
+# Problematic: Not returning a meaningful value
+Langsmith.trace(name: "My Operation", run_type: "chain") do |run|
+  perform_operation() # If this doesn't return a value, trace won't have proper outputs
+  # No explicit return - the trace might not end properly
+end
+```
+
+This is especially important when creating custom wrapper methods or working with nested traces:
+
+```ruby
+# Custom wrapper method - MUST return the yield result
+def with_my_custom_tracing(&block)
+  Langsmith.trace(name: "Custom Trace") do |run|
+    result = yield(run) # Capture the result
+    result # Return it so the trace ends properly
+  end
+end
+
+# Using the wrapper
+with_my_custom_tracing do |run|
+  { output: "Some result" } # Return value gets properly propagated
+end
+```
+
 ### Run Management
 
 The SDK provides a `RunManager` for advanced run management:
