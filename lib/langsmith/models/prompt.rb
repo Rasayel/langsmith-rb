@@ -46,10 +46,10 @@ module Langsmith
         return unless template_json
 
         # Route to the appropriate prompt type based on the JSON ID
-        case json["id"]
+        case template_json["id"]
         when ["langchain", "prompts", "chat", "ChatPromptTemplate"]
           template = ChatPromptTemplate.from_json(template_json)
-        when ["langchain", "prompts", "structured", "StructuredPrompt"]
+        when ["langchain_core", "prompts", "structured", "StructuredPrompt"]
           template = StructuredPrompt.from_json(template_json)
         else
           raise "Unknown prompt type"

@@ -22,11 +22,17 @@ module Langsmith
         schema = json.dig("kwargs", "schema")
         structured_output_kwargs = json.dig("kwargs", "structured_output_kwargs") || {}
 
+        raw_tools = json.dig("kwargs", "tools") || []
+        
+        # Parse tools into proper Tool objects
+        tools = raw_tools.map { |tool_json| Tool.from_json(tool_json) }.compact
+
         # Only keep the supported kwargs
         supported_kwargs = {
           messages: json.dig("kwargs", "messages"),
           schema: schema,
-          structured_output_kwargs: structured_output_kwargs
+          structured_output_kwargs: structured_output_kwargs,
+          tools: tools
         }.compact
 
         new(**supported_kwargs)
