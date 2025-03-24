@@ -56,8 +56,8 @@ module Langsmith
       Wrappers::Cohere.new(client, **options)
     end
 
-    def prompt(prompt_name, include_model: false)
-      Models::Prompt.pull(prompt_name, include_model: include_model)
+    def prompt(prompt_name, commit_hash: nil, include_model: false)
+      Models::Prompt.pull(prompt_name, commit_hash: nil, include_model: include_model)
     end
     
     # Get the current run tree from thread-local storage
