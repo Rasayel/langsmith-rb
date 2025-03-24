@@ -3,11 +3,11 @@ module Langsmith
     class StructuredPrompt < ChatPromptTemplate
       attr_accessor :schema, :structured_output_kwargs
 
-      def initialize(messages:, schema: nil, structured_output_kwargs: {}, tools: [])
+      def initialize(messages:, schema: nil, structured_output_kwargs: {}, input_variables:, tools: [])
         @messages = messages
         @schema = schema
         @structured_output_kwargs = structured_output_kwargs
-        super(messages: messages, tools: tools)
+        super(messages: messages, input_variables: input_variables, tools: tools)
       end
 
       def self.from_json(json)
@@ -28,6 +28,7 @@ module Langsmith
           messages: json.dig("kwargs", "messages"),
           schema: schema,
           structured_output_kwargs: structured_output_kwargs,
+          input_variables: json.dig("kwargs", "input_variables"),
           tools: tools
         }.compact
 
