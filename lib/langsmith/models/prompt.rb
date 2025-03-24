@@ -45,9 +45,15 @@ module Langsmith
         template_json = extract_template_json(json)
         return unless template_json
 
-        # Now try to parse as a chat prompt template
-        template = ChatPromptTemplate.from_json(template_json)
-        return unless template
+        # Route to the appropriate prompt type based on the JSON ID
+        case json["id"]
+        when ["langchain", "prompts", "chat", "ChatPromptTemplate"]
+          template = ChatPromptTemplate.from_json(template_json)
+        when ["langchain", "prompts", "structured", "StructuredPrompt"]
+          template = StructuredPrompt.from_json(template_json)
+        else
+          raise "Unknown prompt type"
+        end
 
         # Extract model information
         model = extract_model_json(json)
