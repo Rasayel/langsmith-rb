@@ -11,6 +11,7 @@ require_relative "langsmith/models/model"
 require_relative "langsmith/models/tool"
 require_relative "langsmith/models/chat_prompt_template"
 require_relative "langsmith/models/prompt"
+require_relative "langsmith/models/structured_prompt"
 require_relative "langsmith/client"
 require_relative "langsmith/hub"
 require_relative "langsmith/run_tree"
@@ -57,7 +58,7 @@ module Langsmith
     end
 
     def prompt(prompt_name, commit_hash: nil, include_model: false)
-      Models::Prompt.pull(prompt_name, commit_hash: nil, include_model: include_model)
+      Models::Prompt.pull(prompt_name, commit_hash: commit_hash, include_model: include_model)
     end
     
     # Get the current run tree from thread-local storage
