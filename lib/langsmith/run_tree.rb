@@ -28,6 +28,7 @@ module Langsmith
       outputs: nil,
       error: nil, 
       reference_example_id: nil,
+      run_id: nil,
       parent_run_id: nil,
       tags: [],
       metadata: {},
@@ -50,7 +51,7 @@ module Langsmith
       @project_name = project_name || Langsmith.configuration.project_name
       @client = client
       @start_time = Time.now.utc
-      @id = SecureRandom.uuid # Generate ID at initialization
+      @id = run_id || SecureRandom.uuid # Generate ID at initialization
     end
 
     # Post the run to LangSmith
