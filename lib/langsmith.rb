@@ -154,7 +154,7 @@ end
 # Set up autoloading
 loader = Zeitwerk::Loader.for_gem
 loader.push_dir(File.expand_path("../", __FILE__))
-loader.infector.inflect(
+loader.inflector.inflect(
   "openai" => "OpenAI",
   "ai_message_template" => "AIMessageTemplate"
 )
