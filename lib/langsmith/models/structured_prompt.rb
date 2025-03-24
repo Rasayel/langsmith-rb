@@ -16,7 +16,7 @@ module Langsmith
 
       def self.from_json(json)
         return unless json["type"] == "constructor" &&
-                     json["id"] == ["langchain", "prompts", "structured", "StructuredPrompt"]
+                     json["id"] == ["langchain_core", "prompts", "structured", "StructuredPrompt"]
 
         # Extract schema and structured_output_kwargs if present
         schema = json.dig("kwargs", "schema")
