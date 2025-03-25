@@ -10,7 +10,7 @@ end
 begin
   # Try to fetch a prompt from the current workspace
   # Just provide the name of the prompt, like "qualify-agent"
-  prompt_name = "testing-prompt"
+  prompt_name = "cleo-v2-no-vars-objective-tools"
   puts "Fetching prompt '#{prompt_name}' from your workspace..."
   
   prompt = Langsmith.prompt(prompt_name, include_model:true)
