@@ -10,13 +10,22 @@ module Langsmith
 
       def initialize(messages:, input_variables:, tools: [])
         @messages = messages.map do |msg|
-          case msg.dig("id", -1)
-          when "SystemMessagePromptTemplate"
+          # Handle direct Message objects (SystemMessage, HumanMessage, etc.)
+          if msg.dig("id", 0) == "langchain_core" && msg.dig("id", 1) == "messages"
+            Models::Message.from_json(msg)
+          # Handle MessagePromptTemplate objects  
+          elsif msg.dig("id", -1) == "SystemMessagePromptTemplate"
             Models::SystemMessageTemplate.from_json(msg)
-          when "HumanMessagePromptTemplate"
+          elsif msg.dig("id", -1) == "HumanMessagePromptTemplate"
             Models::HumanMessageTemplate.from_json(msg)
+          elsif msg.dig("id", -1) == "AIMessagePromptTemplate"
+            Models::AIMessageTemplate.from_json(msg)
           end
         end.compact
+        
+        # Extra check for empty messages
+        puts "DEBUG: Found #{@messages.size} messages after initial parsing" if ENV["DEBUG"]
+        
         @input_variables = input_variables
         @tools = tools.is_a?(Array) ? tools : []
       end
@@ -40,6 +49,22 @@ module Langsmith
 
         new(**supported_kwargs)
       end
+      
+      # Handle messages that might be in a RunnableSequence structure
+      def self.extract_from_runnable_sequence(json)
+        # Identify the template in a RunnableSequence
+        first_part = json.dig("kwargs", "first")
+        
+        # Check if it's a ChatPromptTemplate
+        if first_part && 
+           first_part["type"] == "constructor" && 
+           first_part["id"] == ["langchain", "prompts", "chat", "ChatPromptTemplate"]
+          # Extract directly
+          from_json(first_part)
+        else
+          nil
+        end
+      end
 
       # Format the prompt with the given variables
       def format(**kwargs)
@@ -47,26 +72,33 @@ module Langsmith
         raise ArgumentError, "Missing variables: #{missing.join(', ')}" if missing.any?
 
         messages = @messages.map do |message|
-          message_vars = message.prompt.input_variables
-          message_kwargs = kwargs.slice(*message_vars.map(&:to_sym))
-          content = message.prompt.template.dup
-          
-          # Replace variables based on template format
-          message_kwargs.each do |key, value|
-            case message.prompt.template_format
-            when "f-string"
-              content.gsub!("{#{key}}", value.to_s)
-            else
-              # Default to % formatting
-              content = content % { key => value }
+          # Handle direct Message objects vs MessageTemplate objects
+          if message.is_a?(Message)
+            { role: message.role, content: message.content }
+          else
+            message_vars = message.prompt.input_variables
+            message_kwargs = kwargs.slice(*message_vars.map(&:to_sym))
+            content = message.prompt.template.dup
+            
+            # Replace variables based on template format
+            message_kwargs.each do |key, value|
+              case message.prompt.template_format
+              when "f-string"
+                content.gsub!("{#{key}}", value.to_s)
+              else
+                # Default to % formatting
+                content = content % { key => value }
+              end
             end
-          end
-          
-          case message
-          when Models::SystemMessageTemplate
-            { role: "system", content: content }
-          when Models::HumanMessageTemplate
-            { role: "user", content: content }
+            
+            case message
+            when Models::SystemMessageTemplate
+              { role: "system", content: content }
+            when Models::HumanMessageTemplate
+              { role: "user", content: content }
+            when Models::AIMessageTemplate
+              { role: "assistant", content: content }
+            end
           end
         end
 

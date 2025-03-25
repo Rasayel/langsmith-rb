@@ -41,7 +41,19 @@ module Langsmith
       end
 
       def self.from_json(json)
-        # First, normalize the structure - extract appropriate parts based on the JSON type
+        # Special case for RunnableSequence which is common from LangSmith
+        if json["type"] == "constructor" && json["id"] == ["langchain", "schema", "runnable", "RunnableSequence"]
+          # Extract ChatPromptTemplate directly from RunnableSequence
+          template = ChatPromptTemplate.extract_from_runnable_sequence(json)
+          if template
+            # Extract model and tools
+            model = extract_model_json(json)
+            tools = extract_tools(json, template.tools)  
+            return new(template: template, model: model, tools: tools)
+          end
+        end
+        
+        # Standard case - extract template JSON
         template_json = extract_template_json(json)
         return unless template_json
 
@@ -68,7 +80,10 @@ module Langsmith
       # @param json [Hash] Original JSON from the API
       # @return [Hash, nil] Normalized template JSON or nil if not found
       def self.extract_template_json(json)
-        if json["type"] == "constructor" && json["id"] == ["langchain", "schema", "runnable", "RunnableSequence"]
+        # Check for the nested manifest in the structure from the API, which is present for direct pull responses
+        if json.key?("manifest") && json["manifest"].is_a?(Hash) && json["manifest"]["type"] == "constructor"
+          return json["manifest"]
+        elsif json["type"] == "constructor" && json["id"] == ["langchain", "schema", "runnable", "RunnableSequence"]
           # For RunnableSequence, the template is in the "first" section
           return json.dig("kwargs", "first")
         elsif json["type"] == "constructor" && json["id"] == ["langchain", "prompts", "chat", "ChatPromptTemplate"]
