@@ -3,7 +3,16 @@ module Langsmith
   # This structure ensures compatibility with Rails' Zeitwerk autoloader
   module Errors
     # Base error class for all Langsmith-specific errors
-    class Error < StandardError; end
+    class Error < StandardError
+      def initialize(message, base_error = nil)
+        @base_error = base_error
+        super(message)
+      end
+
+      def message
+        @base_error&.message || super()
+      end
+    end
     
     # Raised when there is an issue with the configuration
     class ConfigurationError < Error; end

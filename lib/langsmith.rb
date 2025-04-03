@@ -134,7 +134,7 @@ module Langsmith
           run.end(error: e.message)
           run.patch
         end
-        puts "Error while calling LangSmith within the SDK"
+        raise Langsmith::Error.new("Failed to execute trace: #{e.message}", e)
       ensure
         # Restore the previous run
         set_current_run_tree(previous_run)
