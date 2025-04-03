@@ -4,7 +4,7 @@ PATH
     langsmith-sdk-rb (0.1.0)
       anthropic (~> 0.3)
       cohere-ruby (~> 0.2)
-      ruby-openai (~> 6.1)
+      ruby-openai (>= 6.1)
       zeitwerk (~> 2.6)
 
 GEM

@@ -18,7 +18,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "zeitwerk", "~> 2.6"
-  spec.add_dependency "ruby-openai", "~> 6.1"
+  spec.add_dependency "ruby-openai", ">= 6.1"
   spec.add_dependency "anthropic", "~> 0.3"
   spec.add_dependency "cohere-ruby", "~> 0.2"
 
