@@ -85,6 +85,8 @@ module Langsmith
               case message.prompt.template_format
               when "f-string"
                 content.gsub!("{#{key}}", value.to_s)
+              when "moustache"
+                content.gsub!("{{#{key}}}", value.to_s)
               else
                 # Default to % formatting
                 content = content % { key => value }
